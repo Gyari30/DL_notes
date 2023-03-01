@@ -1,0 +1,211 @@
+---
+title: "Practical 1"
+output:
+  html_notebook: 
+    highlight: espresso
+    css: dlnbstyle.css
+    theme: sandstone
+    toc: yes
+  html_document:
+    df_print: paged
+    css: "dlnbstyle.css"
+    toc: true
+editor_options:
+  chunk_output_type: inline
+---
+
+We start logistic regression, it will help us understand the meaning of non-linearity. 
+ 
+
+First, few things that we need by way of setup:
+```{r, echo= T}
+knitr::opts_chunk$set(
+  comment = '',
+  fig.width = 6,
+  fig.height = 6,
+  cache = FALSE
+)
+# for generic R help and tutorials
+# help.start()
+#  Setup  --------------------
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# install.packages("magrittr")
+# install.packages("psych")
+library(magrittr)
+library(MASS)
+library(psych)
+```
+
+# Warm up: logistic regression
+
+We use the Boston dataset. Let's look at it
+```{r, eval=TRUE, echo=TRUE}
+#  Warm up: Logistic regression  ------------
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+names(Boston) %>% print
+# Print the first 3 lines
+head(Boston,3) %>% print
+
+```
+
+Use `?Boston` for more details on this dataset
+
+Let's split the dependent variable to two parts (say cheap and expensive).
+
+
+```{r, eval= T}
+med_value <- median(Boston$medv)
+# predict how many house will have higher price than the median house price
+y <- ifelse(Boston$medv > med_value, 1, 0)
+
+# Add out target to the data, and remove the median from the data 
+Boston$y <- y
+Boston$medv <- NULL
+
+```
+
+Divide data into Train and test
+
+```{r}
+set.seed(11)
+TT <- NROW(Boston)
+tmp_ind <- sample(1:TT, size = TT / 2)
+
+trainn <- Boston[tmp_ind, ]
+testt <- Boston[-tmp_ind, ]
+
+dim(trainn); dim(testt);
+```
+
+Now let's train logistic regression. 
+```{r}
+# Logistic regression
+
+logreg <- glm(y ~ ., data = trainn, family = binomial)
+summary(logreg)
+```
+Run the following code to see the effect of the variable `dis` on the probability of the house being expensive.
+
+```{r}
+dis_range <- seq(
+  from = min(Boston$dis), to = max(Boston$dis),
+  by = .1
+)
+n_range <- length(dis_range)
+
+coeff <- coef(logreg)[-9] # remove 'dis'
+mean_val <- apply(Boston, 2, mean)[-c(8, 14)] # without 'dis' and 'y'
+mean_val <- c(1, mean_val) # add a constant
+y0 <- rep(coeff %*% mean_val, n_range) +
+  coef(logreg)[9] * dis_range
+prob0 <- exp(y0) / (1 + exp(y0))
+
+plot(dis_range, prob0,
+  ylim = c(0, 1), las = 1,
+  type = "l", lwd = 3, lty = 1, col = "blue",
+  xlab = "Weighted mean of distances to five Boston employment centres", ylab = "",
+  main = "Change in Probability"
+)
+grid(col = "grey", lwd = 2)
+
+```
+
+Let's do the same for the variable `age`:
+
+```{r}
+age_range <- seq(from = min(Boston$age), to = max(Boston$age), by = .1)
+n_range_age <- length(age_range)
+
+coeff2 <- coef(logreg)[-8] # remove 'age'
+mean_val2 <- apply(Boston, 2, mean)[-c(7, 14)] # without 'dis' and 'y'
+mean_val2 <- c(1, mean_val2)
+y0_2 <- rep(coeff2 %*% mean_val2, n_range_age) + coef(logreg)[8] * age_range
+
+prob0_2 <- exp(y0_2) / (1 + exp(y0_2))
+
+plot(dis_range, prob0,
+  ylim = c(0, 1), las = 1, xlim = c(1, 100),
+  type = "l", lwd = 3, lty = 1, col = "blue",
+  xlab = "Impact of distance and age on the probability", ylab = "",
+  main = "Change in Probability"
+)
+lines(age_range, prob0_2, lwd = 3, lty = 1, col = "green"); grid(col = "grey", lwd = 2)
+```
+## Predict
+```{r}
+# get the fit using the model build using train dataset
+trainn$fitt <- predict(logreg, data = trainn, type = "response")
+
+# Predict using the model build using test dataset
+
+testt$pred <-
+  predict(logreg, newdata = testt, type = "response")
+# names(testt)
+# confusion matrix
+confuse_tab <- table(actual = testt$y, predict = testt$pred > 0.5)
+(confuse_tab[1, 1] + confuse_tab[2, 2]) / sum(confuse_tab)
+```
+
+
+# Activation funcions
+
+Code the sigmoid function.
+
+```{r}
+# install.packages("Deriv")
+library(Deriv)
+sigmoid <- function(x) {
+  X <- 1 / (1 + exp(-x))
+  X
+}
+sigmoid(0.2)
+
+curve(sigmoid, from = -5, to = 5)
+
+grad_sigmoid <- Deriv(sigmoid)
+grad_sigmoid(0.5)
+
+curve(grad_sigmoid, from = -5, to = 5)
+```
+
+Code the relu function:
+```{r}
+
+relu <- function(x) {
+  ifelse(x > 0, x, 0)
+}
+curve(relu, from = -5, to = 5)
+
+grad_relu <- Deriv(relu)
+curve(grad_relu, from = -5, to = 5)
+
+```
+Code the swish function
+
+```{r}
+swish <- function(x) {
+  x * sigmoid(x)
+}
+curve(swish, from = -5, to = 5)
+grad_swish <- Deriv(swish)
+curve(grad_swish, from = -10, to = 10)
+```
+
+
+
+## what does the softmax do?
+
+```{r}
+TT <- 1000
+x <- runif(TT, -10, 10)
+par(mfrow = c(2, 1))
+plot(x, pch = 19, ylab = "x")
+tmpp <- tail(order(x), 5)
+points(x[tmpp] ~ tmpp, pch = 19, las = 1, ylab = "", col = 2)
+grid()
+plot(exp(x), pch = 19, cex=0.5) # we can divide exp(x) if we want to normalize
+grid()
+points(exp(x)[tmpp] ~ tmpp, pch = 19, col = 2)
+
+```
+
